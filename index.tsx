@@ -12,6 +12,7 @@ const POLISH_MODEL = 'gemini-2.5-pro';
 
 interface Note {
   id: string;
+  title?: string;
   rawTranscription: string;
   polishedNote: string;
   timestamp: number;
@@ -109,16 +110,104 @@ class VoiceNotesApp {
 
     this.bindEventListeners();
     this.initTheme();
-    this.createNewNote();
+    
+    if (!this.loadSavedNote()) {
+      this.createNewNote();
+    }
 
     this.recordingStatus.textContent = 'Ready to record';
   }
 
   private bindEventListeners(): void {
     this.recordButton.addEventListener('click', () => this.toggleRecording());
-    this.newButton.addEventListener('click', () => this.createNewNote());
+    this.newButton.addEventListener('click', () => {
+      if (confirm('Create a new note? This will clear the current note.')) {
+        this.createNewNote();
+      }
+    });
     this.themeToggleButton.addEventListener('click', () => this.toggleTheme());
     window.addEventListener('resize', this.handleResize.bind(this));
+
+    // Auto-save listeners on editable elements
+    let saveTimeout: number | null = null;
+    const triggerAutoSave = () => {
+      if (saveTimeout) window.clearTimeout(saveTimeout);
+      saveTimeout = window.setTimeout(() => this.saveCurrentNoteToLocal(), 1000);
+    };
+
+    if (this.rawTranscription) this.rawTranscription.addEventListener('input', triggerAutoSave);
+    if (this.polishedNote) this.polishedNote.addEventListener('input', triggerAutoSave);
+    if (this.editorTitle) this.editorTitle.addEventListener('input', triggerAutoSave);
+  }
+
+  private saveCurrentNoteToLocal(): void {
+    if (!this.currentNote) return;
+
+    if (!this.rawTranscription.classList.contains('placeholder-active')) {
+      this.currentNote.rawTranscription = this.rawTranscription.textContent || '';
+    } else {
+      this.currentNote.rawTranscription = '';
+    }
+
+    if (!this.polishedNote.classList.contains('placeholder-active')) {
+      this.currentNote.polishedNote = this.polishedNote.innerHTML || '';
+    } else {
+      this.currentNote.polishedNote = '';
+    }
+
+    if (!this.editorTitle.classList.contains('placeholder-active')) {
+      this.currentNote.title = this.editorTitle.textContent || '';
+    } else {
+      this.currentNote.title = '';
+    }
+
+    localStorage.setItem('autosaved_note', JSON.stringify(this.currentNote));
+    
+    const originalStatus = this.recordingStatus.textContent;
+    if (originalStatus === 'Ready to record' || originalStatus === 'Note polished. Ready for next recording.') {
+       this.recordingStatus.textContent = 'Auto-saved';
+       setTimeout(() => {
+          if (this.recordingStatus.textContent === 'Auto-saved') {
+            this.recordingStatus.textContent = originalStatus;
+          }
+       }, 2000);
+    }
+  }
+
+  private loadSavedNote(): boolean {
+    const saved = localStorage.getItem('autosaved_note');
+    if (!saved) return false;
+    
+    try {
+      const note = JSON.parse(saved) as Note;
+      if (!note || (!note.rawTranscription && !note.polishedNote && !note.title)) return false;
+      
+      this.currentNote = note;
+      
+      let hasData = false;
+      if (note.title && this.editorTitle) {
+        this.editorTitle.textContent = note.title;
+        this.editorTitle.classList.remove('placeholder-active');
+        hasData = true;
+      }
+      
+      if (note.rawTranscription && this.rawTranscription) {
+        this.rawTranscription.textContent = note.rawTranscription;
+        this.rawTranscription.classList.remove('placeholder-active');
+        hasData = true;
+      }
+      
+      if (note.polishedNote && this.polishedNote) {
+        this.polishedNote.innerHTML = note.polishedNote;
+        this.polishedNote.classList.remove('placeholder-active');
+        hasData = true;
+      }
+      
+      return hasData;
+    } catch(e) {
+      console.warn('Failed to load auto-saved note:', e);
+      return false;
+    }
   }
 
   private handleResize(): void {
@@ -580,6 +669,7 @@ class VoiceNotesApp {
 
         if (this.currentNote)
           this.currentNote.rawTranscription = transcriptionText;
+        this.saveCurrentNoteToLocal();
         this.recordingStatus.textContent =
           'Transcription complete. Polishing note...';
         this.getPolishedNote().catch((err) => {
@@ -705,7 +795,11 @@ class VoiceNotesApp {
           }
         }
 
-        if (this.currentNote) this.currentNote.polishedNote = polishedText;
+        if (this.currentNote) {
+          this.currentNote.title = noteTitleSet ? this.editorTitle?.textContent || '' : '';
+          this.currentNote.polishedNote = polishedText;
+        }
+        this.saveCurrentNoteToLocal();
         this.recordingStatus.textContent =
           'Note polished. Ready for next recording.';
       } else {
@@ -742,6 +836,7 @@ class VoiceNotesApp {
   private createNewNote(): void {
     this.currentNote = {
       id: `note_${Date.now()}`,
+      title: '',
       rawTranscription: '',
       polishedNote: '',
       timestamp: Date.now(),
@@ -763,6 +858,7 @@ class VoiceNotesApp {
       this.editorTitle.textContent = placeholder;
       this.editorTitle.classList.add('placeholder-active');
     }
+    this.saveCurrentNoteToLocal();
     this.recordingStatus.textContent = 'Ready to record';
 
     if (this.isRecording) {
