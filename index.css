@@ -202,6 +202,35 @@ body {
   background-color: transparent;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.copy-button {
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.copy-button:hover {
+  color: var(--color-text);
+  background-color: var(--color-surface-hover);
+}
+
+.copy-button.copied {
+  color: var(--color-success);
+}
+
 .tab-navigation-container {
   background: var(--glass-bg);
   backdrop-filter: blur(12px);

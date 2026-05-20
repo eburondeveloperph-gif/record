@@ -28,6 +28,7 @@ class VoiceNotesApp {
   private polishedNote: HTMLDivElement;
   private promptNote: HTMLDivElement;
   private newButton: HTMLButtonElement;
+  private copyButton: HTMLButtonElement;
   private themeToggleButton: HTMLButtonElement;
   private themeToggleIcon: HTMLElement;
   private audioChunks: Blob[] = [];
@@ -73,6 +74,7 @@ class VoiceNotesApp {
       'promptNote',
     ) as HTMLDivElement;
     this.newButton = document.getElementById('newButton') as HTMLButtonElement;
+    this.copyButton = document.getElementById('copyButton') as HTMLButtonElement;
     this.themeToggleButton = document.getElementById(
       'themeToggleButton',
     ) as HTMLButtonElement;
@@ -130,6 +132,7 @@ class VoiceNotesApp {
         this.createNewNote();
       }
     });
+    this.copyButton.addEventListener('click', () => this.copyActiveContent());
     this.themeToggleButton.addEventListener('click', () => this.toggleTheme());
     window.addEventListener('resize', this.handleResize.bind(this));
 
@@ -226,6 +229,42 @@ class VoiceNotesApp {
       console.warn('Failed to load auto-saved note:', e);
       return false;
     }
+  }
+
+  private copyActiveContent(): void {
+    const activeTabButton = document.querySelector('.tab-button.active');
+    if (!activeTabButton) return;
+
+    const tabName = activeTabButton.getAttribute('data-tab');
+    let contentToCopy = '';
+
+    if (tabName === 'raw') {
+      contentToCopy = this.rawTranscription.innerText || this.rawTranscription.textContent || '';
+    } else if (tabName === 'prompt') {
+      contentToCopy = this.promptNote.innerText || this.promptNote.textContent || '';
+    } else {
+      contentToCopy = this.polishedNote.innerText || this.polishedNote.textContent || '';
+    }
+
+    if (!contentToCopy || contentToCopy.trim() === '') return;
+
+    navigator.clipboard.writeText(contentToCopy).then(() => {
+      // Show copied indication
+      const originalTitle = this.copyButton.title;
+      const originalIconClasses = this.copyButton.innerHTML;
+      
+      this.copyButton.title = 'Copied!';
+      this.copyButton.innerHTML = '<i class="fas fa-check"></i>';
+      this.copyButton.classList.add('copied');
+
+      setTimeout(() => {
+        this.copyButton.title = originalTitle;
+        this.copyButton.innerHTML = originalIconClasses;
+        this.copyButton.classList.remove('copied');
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy text: ', err);
+    });
   }
 
   private handleResize(): void {
