@@ -31,19 +31,23 @@
             <div class="header-actions">
               <div class="tab-navigation-container">
                 <div class="tab-navigation">
-                  <button class="tab-button active" data-tab="note">Polished</button>
-                  <button class="tab-button" data-tab="prompt">Prompt</button>
+                  <button class="tab-button" data-tab="note">Polished</button>
+                  <button class="tab-button active" data-tab="prompt">Prompt</button>
                   <button class="tab-button" data-tab="raw">Raw</button>
                   <div class="active-tab-indicator"></div>
                 </div>
               </div>
-              <button class="copy-button" id="copyButton" title="Copy to clipboard">
-                <i class="fas fa-copy"></i>
+              <button class="copy-button" id="settingsButton" title="Settings">
+                <i class="fas fa-cog"></i>
               </button>
             </div>
           </div>
 
           <div class="note-content-wrapper">
+            <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+              <div class="spinner"></div>
+              <p>Processing with AI...</p>
+            </div>
             <div
               id="polishedNote"
               class="note-content active"
@@ -79,6 +83,9 @@
           </div>
 
           <div class="recording-controls">
+            <button class="action-button" id="copyButton" title="Copy to clipboard">
+              <i class="fas fa-copy"></i>
+            </button>
             <button class="action-button" id="themeToggleButton" title="Toggle Theme">
               <i class="fas fa-sun"></i>
             </button>
@@ -95,10 +102,25 @@
               <span class="record-text">Record</span>
             </button>
 
-            <button class="action-button" id="newButton" title="New Note / Clear">
-              <i class="fas fa-file"></i>
-            </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="settingsModal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Settings</h3>
+          <button id="closeSettingsButton" class="close-button" title="Close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="setting-group">
+            <label for="promptSystemInstruction">Prompt Polisher System Instructions</label>
+            <textarea id="promptSystemInstruction" rows="8"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="saveSettingsButton" class="save-button">Save Settings</button>
         </div>
       </div>
     </div>

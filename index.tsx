@@ -10,6 +10,8 @@ import {marked} from 'marked';
 const TRANSCRIPTION_MODEL = 'gemini-2.5-pro';
 const POLISH_MODEL = 'gemini-2.5-pro';
 
+const DEFAULT_PROMPT_SYSTEM_INSTRUCTION = `System Instructions: You are an high intellectual prompt polishing assistant. Whenever you receive raw spoken text, rewrite it into a clean, clear, detailed, and well-structured prompt for an AI model. Preserve the user’s intent. Do not overdo the polishing, what i mean from polish is to just convert this into a very understandable way or clear way because humans have lots of vague ways sometimes, but still render it in human natural language. Do not answer the prompt. Only return the improved prompt. No Intro No Extro just polish and development type tailored.`;
+
 interface Note {
   id: string;
   title?: string;
@@ -27,10 +29,16 @@ class VoiceNotesApp {
   private rawTranscription: HTMLDivElement;
   private polishedNote: HTMLDivElement;
   private promptNote: HTMLDivElement;
-  private newButton: HTMLButtonElement;
   private copyButton: HTMLButtonElement;
   private themeToggleButton: HTMLButtonElement;
   private themeToggleIcon: HTMLElement;
+  private loadingOverlay: HTMLDivElement;
+  private settingsButton: HTMLButtonElement;
+  private settingsModal: HTMLDivElement;
+  private closeSettingsButton: HTMLButtonElement;
+  private saveSettingsButton: HTMLButtonElement;
+  private promptSystemInstructionInput: HTMLTextAreaElement;
+  
   private audioChunks: Blob[] = [];
   private isRecording = false;
   private currentNote: Note | null = null;
@@ -73,7 +81,6 @@ class VoiceNotesApp {
     this.promptNote = document.getElementById(
       'promptNote',
     ) as HTMLDivElement;
-    this.newButton = document.getElementById('newButton') as HTMLButtonElement;
     this.copyButton = document.getElementById('copyButton') as HTMLButtonElement;
     this.themeToggleButton = document.getElementById(
       'themeToggleButton',
@@ -81,6 +88,24 @@ class VoiceNotesApp {
     this.themeToggleIcon = this.themeToggleButton.querySelector(
       'i',
     ) as HTMLElement;
+    this.settingsButton = document.getElementById(
+      'settingsButton',
+    ) as HTMLButtonElement;
+    this.settingsModal = document.getElementById(
+      'settingsModal',
+    ) as HTMLDivElement;
+    this.closeSettingsButton = document.getElementById(
+      'closeSettingsButton',
+    ) as HTMLButtonElement;
+    this.saveSettingsButton = document.getElementById(
+      'saveSettingsButton',
+    ) as HTMLButtonElement;
+    this.promptSystemInstructionInput = document.getElementById(
+      'promptSystemInstruction',
+    ) as HTMLTextAreaElement;
+    this.loadingOverlay = document.getElementById(
+      'loadingOverlay',
+    ) as HTMLDivElement;
     this.editorTitle = document.querySelector(
       '.editor-title',
     ) as HTMLDivElement;
@@ -127,13 +152,19 @@ class VoiceNotesApp {
 
   private bindEventListeners(): void {
     this.recordButton.addEventListener('click', () => this.toggleRecording());
-    this.newButton.addEventListener('click', () => {
-      if (confirm('Create a new note? This will clear the current note.')) {
-        this.createNewNote();
-      }
-    });
     this.copyButton.addEventListener('click', () => this.copyActiveContent());
     this.themeToggleButton.addEventListener('click', () => this.toggleTheme());
+    this.settingsButton.addEventListener('click', () => this.openSettings());
+    this.closeSettingsButton.addEventListener('click', () => this.closeSettings());
+    this.saveSettingsButton.addEventListener('click', () => this.saveSettings());
+    
+    // Close modal on outside click
+    this.settingsModal.addEventListener('click', (e) => {
+      if (e.target === this.settingsModal) {
+        this.closeSettings();
+      }
+    });
+
     window.addEventListener('resize', this.handleResize.bind(this));
 
     // Auto-save listeners on editable elements
@@ -265,6 +296,26 @@ class VoiceNotesApp {
     }).catch(err => {
       console.error('Failed to copy text: ', err);
     });
+  }
+
+  private openSettings(): void {
+    const savedInstruction = localStorage.getItem('prompt_system_instruction') || DEFAULT_PROMPT_SYSTEM_INSTRUCTION;
+    this.promptSystemInstructionInput.value = savedInstruction;
+    this.settingsModal.classList.add('active');
+  }
+
+  private closeSettings(): void {
+    this.settingsModal.classList.remove('active');
+  }
+
+  private saveSettings(): void {
+    const newInstruction = this.promptSystemInstructionInput.value.trim();
+    if (newInstruction) {
+      localStorage.setItem('prompt_system_instruction', newInstruction);
+    } else {
+      localStorage.setItem('prompt_system_instruction', DEFAULT_PROMPT_SYSTEM_INSTRUCTION);
+    }
+    this.closeSettings();
   }
 
   private handleResize(): void {
@@ -700,6 +751,7 @@ class VoiceNotesApp {
   ): Promise<void> {
     try {
       this.recordingStatus.textContent = 'Getting transcription...';
+      this.loadingOverlay.classList.add('visible');
 
       const contents = [
         {text: 'Generate a highly accurate, complete, and detailed transcript of this audio. Pay close attention to transcribe verbatim, even if there are heavy accents, background noise, or mumbling. Do not summarize or correct the spoken grammar—just provide the exact transcription.'},
@@ -730,14 +782,20 @@ class VoiceNotesApp {
         this.recordingStatus.textContent =
           'Transcription complete. Processing notes...';
         
-        Promise.all([
-          this.getPolishedNote(),
-          this.getDeveloperPromptNote()
-        ]).catch((err) => {
+        try {
+          await Promise.all([
+            this.getPolishedNote(),
+            this.getDeveloperPromptNote()
+          ]);
+          this.recordingStatus.textContent =
+            'Notes processed. Ready for next recording.';
+        } catch (err) {
           console.error('Error processing notes:', err);
           this.recordingStatus.textContent =
             'Error processing notes after transcription.';
-        });
+        } finally {
+          this.loadingOverlay.classList.remove('visible');
+        }
       } else {
         this.recordingStatus.textContent =
           'Transcription failed or returned empty.';
@@ -746,6 +804,7 @@ class VoiceNotesApp {
         this.rawTranscription.textContent =
           this.rawTranscription.getAttribute('placeholder');
         this.rawTranscription.classList.add('placeholder-active');
+        this.loadingOverlay.classList.remove('visible');
       }
     } catch (error) {
       console.error('Error getting transcription:', error);
@@ -755,6 +814,7 @@ class VoiceNotesApp {
       this.rawTranscription.textContent =
         this.rawTranscription.getAttribute('placeholder');
       this.rawTranscription.classList.add('placeholder-active');
+      this.loadingOverlay.classList.remove('visible');
     }
   }
 
@@ -765,7 +825,6 @@ class VoiceNotesApp {
         this.rawTranscription.textContent.trim() === '' ||
         this.rawTranscription.classList.contains('placeholder-active')
       ) {
-        this.recordingStatus.textContent = 'No transcription to polish';
         this.polishedNote.innerHTML =
           '<p><em>No transcription available to polish.</em></p>';
         const placeholder = this.polishedNote.getAttribute('placeholder') || '';
@@ -773,8 +832,6 @@ class VoiceNotesApp {
         this.polishedNote.classList.add('placeholder-active');
         return;
       }
-
-      this.recordingStatus.textContent = 'Polishing note...';
 
       const prompt = `Take this raw transcription and create a polished, well-formatted note.
                     Remove filler words (um, uh, like), repetitions, and false starts.
@@ -861,11 +918,7 @@ class VoiceNotesApp {
           this.currentNote.polishedNote = polishedText;
         }
         this.saveCurrentNoteToLocal();
-        this.recordingStatus.textContent =
-          'Note polished. Ready for next recording.';
       } else {
-        this.recordingStatus.textContent =
-          'Polishing failed or returned empty.';
         this.polishedNote.innerHTML =
           '<p><em>Polishing returned empty. Raw transcription is available.</em></p>';
         if (
@@ -880,8 +933,6 @@ class VoiceNotesApp {
       }
     } catch (error) {
       console.error('Error polishing note:', error);
-      this.recordingStatus.textContent =
-        'Error polishing note. Please try again.';
       this.polishedNote.innerHTML = `<p><em>Error during polishing: ${error instanceof Error ? error.message : String(error)}</em></p>`;
       if (
         this.polishedNote.textContent?.trim() === '' ||
@@ -909,7 +960,8 @@ class VoiceNotesApp {
         return;
       }
 
-      const prompt = `System Instructions: You are an high intellectual prompt polishing assistant. Whenever you receive raw spoken text, rewrite it into a clean, clear, detailed, and well-structured prompt for an AI model. Preserve the user’s intent. Do not answer the prompt. Only return the improved prompt. No Intro No Extro just polish and development type tailored.
+      const systemInstruction = localStorage.getItem('prompt_system_instruction') || DEFAULT_PROMPT_SYSTEM_INSTRUCTION;
+      const prompt = `${systemInstruction}
 
       Raw spoken text:
       ${this.rawTranscription.textContent}`;
