@@ -15,6 +15,7 @@ interface Note {
   title?: string;
   rawTranscription: string;
   polishedNote: string;
+  promptNote: string;
   timestamp: number;
 }
 
@@ -25,6 +26,7 @@ class VoiceNotesApp {
   private recordingStatus: HTMLDivElement;
   private rawTranscription: HTMLDivElement;
   private polishedNote: HTMLDivElement;
+  private promptNote: HTMLDivElement;
   private newButton: HTMLButtonElement;
   private themeToggleButton: HTMLButtonElement;
   private themeToggleIcon: HTMLElement;
@@ -66,6 +68,9 @@ class VoiceNotesApp {
     ) as HTMLDivElement;
     this.polishedNote = document.getElementById(
       'polishedNote',
+    ) as HTMLDivElement;
+    this.promptNote = document.getElementById(
+      'promptNote',
     ) as HTMLDivElement;
     this.newButton = document.getElementById('newButton') as HTMLButtonElement;
     this.themeToggleButton = document.getElementById(
@@ -137,6 +142,7 @@ class VoiceNotesApp {
 
     if (this.rawTranscription) this.rawTranscription.addEventListener('input', triggerAutoSave);
     if (this.polishedNote) this.polishedNote.addEventListener('input', triggerAutoSave);
+    if (this.promptNote) this.promptNote.addEventListener('input', triggerAutoSave);
     if (this.editorTitle) this.editorTitle.addEventListener('input', triggerAutoSave);
   }
 
@@ -153,6 +159,12 @@ class VoiceNotesApp {
       this.currentNote.polishedNote = this.polishedNote.innerHTML || '';
     } else {
       this.currentNote.polishedNote = '';
+    }
+
+    if (!this.promptNote.classList.contains('placeholder-active')) {
+      this.currentNote.promptNote = this.promptNote.innerHTML || '';
+    } else {
+      this.currentNote.promptNote = '';
     }
 
     if (!this.editorTitle.classList.contains('placeholder-active')) {
@@ -180,7 +192,7 @@ class VoiceNotesApp {
     
     try {
       const note = JSON.parse(saved) as Note;
-      if (!note || (!note.rawTranscription && !note.polishedNote && !note.title)) return false;
+      if (!note || (!note.rawTranscription && !note.polishedNote && !note.title && !note.promptNote)) return false;
       
       this.currentNote = note;
       
@@ -200,6 +212,12 @@ class VoiceNotesApp {
       if (note.polishedNote && this.polishedNote) {
         this.polishedNote.innerHTML = note.polishedNote;
         this.polishedNote.classList.remove('placeholder-active');
+        hasData = true;
+      }
+      
+      if (note.promptNote && this.promptNote) {
+        this.promptNote.innerHTML = note.promptNote;
+        this.promptNote.classList.remove('placeholder-active');
         hasData = true;
       }
       
@@ -671,11 +689,15 @@ class VoiceNotesApp {
           this.currentNote.rawTranscription = transcriptionText;
         this.saveCurrentNoteToLocal();
         this.recordingStatus.textContent =
-          'Transcription complete. Polishing note...';
-        this.getPolishedNote().catch((err) => {
-          console.error('Error polishing note:', err);
+          'Transcription complete. Processing notes...';
+        
+        Promise.all([
+          this.getPolishedNote(),
+          this.getDeveloperPromptNote()
+        ]).catch((err) => {
+          console.error('Error processing notes:', err);
           this.recordingStatus.textContent =
-            'Error polishing note after transcription.';
+            'Error processing notes after transcription.';
         });
       } else {
         this.recordingStatus.textContent =
@@ -833,12 +855,83 @@ class VoiceNotesApp {
     }
   }
 
+  private async getDeveloperPromptNote(): Promise<void> {
+    try {
+      if (
+        !this.rawTranscription.textContent ||
+        this.rawTranscription.textContent.trim() === '' ||
+        this.rawTranscription.classList.contains('placeholder-active')
+      ) {
+        this.promptNote.innerHTML =
+          '<p><em>No transcription available to generate prompt.</em></p>';
+        const placeholder = this.promptNote.getAttribute('placeholder') || '';
+        this.promptNote.innerHTML = placeholder;
+        this.promptNote.classList.add('placeholder-active');
+        return;
+      }
+
+      const prompt = `System Instructions: You are an high intellectual prompt polishing assistant. Whenever you receive raw spoken text, rewrite it into a clean, clear, detailed, and well-structured prompt for an AI model. Preserve the user’s intent. Do not answer the prompt. Only return the improved prompt. No Intro No Extro just polish and development type tailored.
+
+      Raw spoken text:
+      ${this.rawTranscription.textContent}`;
+      const contents = [{text: prompt}];
+
+      const response = await this.genAI.models.generateContent({
+        model: POLISH_MODEL,
+        contents: contents,
+      });
+      const generatedPrompt = response.text;
+
+      if (generatedPrompt) {
+        const htmlContent = marked.parse(generatedPrompt);
+        this.promptNote.innerHTML = htmlContent;
+        if (generatedPrompt.trim() !== '') {
+          this.promptNote.classList.remove('placeholder-active');
+        } else {
+          const placeholder =
+            this.promptNote.getAttribute('placeholder') || '';
+          this.promptNote.innerHTML = placeholder;
+          this.promptNote.classList.add('placeholder-active');
+        }
+
+        if (this.currentNote) {
+          this.currentNote.promptNote = generatedPrompt;
+        }
+        this.saveCurrentNoteToLocal();
+      } else {
+        this.promptNote.innerHTML =
+          '<p><em>Prompt generation returned empty.</em></p>';
+        if (
+          this.promptNote.textContent?.trim() === '' ||
+          this.promptNote.innerHTML.includes('<em>Prompt generation returned empty')
+        ) {
+          const placeholder =
+            this.promptNote.getAttribute('placeholder') || '';
+          this.promptNote.innerHTML = placeholder;
+          this.promptNote.classList.add('placeholder-active');
+        }
+      }
+    } catch (error) {
+      console.error('Error generating developer prompt:', error);
+      this.promptNote.innerHTML = `<p><em>Error during prompt generation: ${error instanceof Error ? error.message : String(error)}</em></p>`;
+      if (
+        this.promptNote.textContent?.trim() === '' ||
+        this.promptNote.innerHTML.includes('<em>Error during prompt generation')
+      ) {
+        const placeholder = this.promptNote.getAttribute('placeholder') || '';
+        this.promptNote.innerHTML = placeholder;
+        this.promptNote.classList.add('placeholder-active');
+      }
+    }
+  }
+
   private createNewNote(): void {
     this.currentNote = {
       id: `note_${Date.now()}`,
       title: '',
       rawTranscription: '',
       polishedNote: '',
+      promptNote: '',
       timestamp: Date.now(),
     };
 
@@ -851,6 +944,11 @@ class VoiceNotesApp {
       this.polishedNote.getAttribute('placeholder') || '';
     this.polishedNote.innerHTML = polishedPlaceholder;
     this.polishedNote.classList.add('placeholder-active');
+
+    const promptPlaceholder =
+      this.promptNote.getAttribute('placeholder') || '';
+    this.promptNote.innerHTML = promptPlaceholder;
+    this.promptNote.classList.add('placeholder-active');
 
     if (this.editorTitle) {
       const placeholder =
@@ -881,11 +979,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       function updatePlaceholderState() {
         const currentText = (
-          el.id === 'polishedNote' ? el.innerText : el.textContent
+          el.id === 'polishedNote' || el.id === 'promptNote' ? el.innerText : el.textContent
         )?.trim();
 
         if (currentText === '' || currentText === placeholder) {
-          if (el.id === 'polishedNote' && currentText === '') {
+          if ((el.id === 'polishedNote' || el.id === 'promptNote') && currentText === '') {
             el.innerHTML = placeholder;
           } else if (currentText === '') {
             el.textContent = placeholder;
@@ -900,10 +998,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       el.addEventListener('focus', function () {
         const currentText = (
-          this.id === 'polishedNote' ? this.innerText : this.textContent
+          this.id === 'polishedNote' || this.id === 'promptNote' ? this.innerText : this.textContent
         )?.trim();
         if (currentText === placeholder) {
-          if (this.id === 'polishedNote') this.innerHTML = '';
+          if (this.id === 'polishedNote' || this.id === 'promptNote') this.innerHTML = '';
           else this.textContent = '';
           this.classList.remove('placeholder-active');
         }
