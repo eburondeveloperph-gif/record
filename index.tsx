@@ -7,8 +7,8 @@
 import {GoogleGenAI} from '@google/genai';
 import {marked} from 'marked';
 
-const TRANSCRIPTION_MODEL = 'gemini-2.5-pro';
-const POLISH_MODEL = 'gemini-2.5-pro';
+const TRANSCRIPTION_MODEL = 'gemini-2.5-flash';
+const POLISH_MODEL = 'gemini-2.5-flash';
 
 const DEFAULT_PROMPT_SYSTEM_INSTRUCTION = `System Instructions: You are an high intellectual prompt polishing assistant. Whenever you receive raw spoken text, rewrite it into a clean, clear, detailed, and well-structured prompt for an AI model. Preserve the user’s intent. Do not overdo the polishing, what i mean from polish is to just convert this into a very understandable way or clear way because humans have lots of vague ways sometimes, but still render it in human natural language. Do not answer the prompt. Only return the improved prompt. No Intro No Extro just polish and development type tailored.`;
 
